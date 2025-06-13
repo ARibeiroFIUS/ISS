@@ -91,9 +91,9 @@ def extract_text_from_pdf(pdf_path):
                 
                 pages_processed += 1
                 
-                                 # Quebra se o texto já é muito grande (performance)
-                 if len(text) > 200000:  # 200KB de texto (reduzido)
-                     break
+                # Quebra se o texto já é muito grande (performance)
+                if len(text) > 200000:  # 200KB de texto (reduzido)
+                    break
         
         if not text.strip():
             return None, False
@@ -118,9 +118,9 @@ def search_tributos_in_text(text, tributos):
     results = []
     lines = text.split('\n')
     
-         # Limita número de linhas para performance
-     if len(lines) > 5000:
-         lines = lines[:5000]
+    # Limita número de linhas para performance
+    if len(lines) > 5000:
+        lines = lines[:5000]
     
     for tributo in tributos:
         # Regex com word boundaries para evitar falsos positivos
@@ -129,9 +129,9 @@ def search_tributos_in_text(text, tributos):
         matches_found = 0
         for i, line in enumerate(lines):
             if re.search(pattern, line, re.IGNORECASE):
-                                 # Limita número de matches por tributo
-                 if matches_found >= 10:
-                     break
+                # Limita número de matches por tributo
+                if matches_found >= 10:
+                    break
                 
                 # Captura contexto: 5 linhas antes e depois (reduzido para performance)
                 start_idx = max(0, i - 5)
