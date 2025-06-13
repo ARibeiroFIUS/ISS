@@ -8,6 +8,8 @@ from flask import Flask, render_template, request, jsonify, send_file, flash, re
 import pdfplumber
 import requests
 from dotenv import load_dotenv
+import signal
+from functools import wraps
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -16,21 +18,54 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
 
-# Configurações
+# Configurações otimizadas
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf'}
 MARITACA_API_KEY = os.environ.get('MARITACA_API_KEY')
 
+# Configurações de timeout
+PDF_PROCESSING_TIMEOUT = 25  # segundos
+API_TIMEOUT = 10  # segundos
+MAX_PDF_PAGES = 50  # máximo de páginas para processar
+
 # Cria pasta de uploads se não existir
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+class TimeoutError(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Operação excedeu o tempo limite")
+
+def with_timeout(seconds):
+    """Decorator para adicionar timeout a funções"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Configura o signal para timeout
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(seconds)
+            
+            try:
+                result = func(*args, **kwargs)
+            except TimeoutError:
+                return None
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+            
+            return result
+        return wrapper
+    return decorator
 
 def allowed_file(filename):
     """Verifica se o arquivo tem extensão permitida"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@with_timeout(PDF_PROCESSING_TIMEOUT)
 def extract_text_from_pdf(pdf_path):
     """
-    Extrai texto do PDF preservando formatação
+    Extrai texto do PDF preservando formatação com timeout e limite de páginas
     
     Args:
         pdf_path (str): Caminho para o arquivo PDF
@@ -40,11 +75,25 @@ def extract_text_from_pdf(pdf_path):
     """
     try:
         text = ""
+        pages_processed = 0
+        
         with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
+            total_pages = len(pdf.pages)
+            max_pages = min(total_pages, MAX_PDF_PAGES)
+            
+            for i, page in enumerate(pdf.pages):
+                if pages_processed >= max_pages:
+                    break
+                    
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n\n"
+                
+                pages_processed += 1
+                
+                # Quebra se o texto já é muito grande (performance)
+                if len(text) > 500000:  # 500KB de texto
+                    break
         
         if not text.strip():
             return None, False
@@ -57,7 +106,7 @@ def extract_text_from_pdf(pdf_path):
 
 def search_tributos_in_text(text, tributos):
     """
-    Busca menções aos tributos no texto usando regex com word boundaries
+    Busca menções aos tributos no texto usando regex com word boundaries (otimizada)
     
     Args:
         text (str): Texto do PDF
@@ -69,15 +118,24 @@ def search_tributos_in_text(text, tributos):
     results = []
     lines = text.split('\n')
     
+    # Limita número de linhas para performance
+    if len(lines) > 10000:
+        lines = lines[:10000]
+    
     for tributo in tributos:
         # Regex com word boundaries para evitar falsos positivos
         pattern = r'\b' + re.escape(tributo.strip()) + r'\b'
         
+        matches_found = 0
         for i, line in enumerate(lines):
             if re.search(pattern, line, re.IGNORECASE):
-                # Captura contexto: 7 linhas antes e depois
-                start_idx = max(0, i - 7)
-                end_idx = min(len(lines), i + 8)
+                # Limita número de matches por tributo
+                if matches_found >= 20:
+                    break
+                
+                # Captura contexto: 5 linhas antes e depois (reduzido para performance)
+                start_idx = max(0, i - 5)
+                end_idx = min(len(lines), i + 6)
                 
                 context_lines = lines[start_idx:end_idx]
                 context = '\n'.join(context_lines)
@@ -85,15 +143,17 @@ def search_tributos_in_text(text, tributos):
                 results.append({
                     'tributo': tributo.strip(),
                     'linha_encontrada': line.strip(),
-                    'contexto': context,
+                    'contexto': context[:2000],  # Limita tamanho do contexto
                     'linha_numero': i + 1
                 })
+                
+                matches_found += 1
     
     return results
 
 def extract_entities_with_regex(text):
     """
-    Extrai nomes de empresas usando regex simples
+    Extrai nomes de empresas usando regex simples (otimizada)
     
     Args:
         text (str): Texto para análise
@@ -103,27 +163,35 @@ def extract_entities_with_regex(text):
     """
     entities = set()
     
-    # Padrões para identificar empresas
+    # Limita tamanho do texto para performance
+    text = text[:5000]
+    
+    # Padrões para identificar empresas (otimizados)
     patterns = [
         # CNPJ
         r'\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}',
         # Palavras em maiúsculas seguidas de LTDA, S/A, etc.
-        r'[A-ZÁÊÇÕ\s]{3,}(?:\s(?:LTDA|S/A|S\.A\.|EIRELI|EPP|ME)\.?)',
-        # Sequências de palavras em maiúsculas (possíveis razões sociais)
-        r'(?:[A-ZÁÊÇÕ]{2,}\s){2,}[A-ZÁÊÇÕ]{2,}'
+        r'[A-ZÁÊÇÕ\s]{3,30}(?:\s(?:LTDA|S/A|S\.A\.|EIRELI|EPP|ME)\.?)',
     ]
     
     for pattern in patterns:
-        matches = re.findall(pattern, text)
-        for match in matches:
-            if len(match.strip()) > 5:  # Filtrar resultados muito curtos
-                entities.add(match.strip())
+        try:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                if 5 < len(match.strip()) < 100:  # Filtrar resultados muito curtos ou longos
+                    entities.add(match.strip())
+                    
+                # Limita número de entidades encontradas
+                if len(entities) >= 10:
+                    break
+        except:
+            continue
     
     return list(entities)
 
 def extract_entities_with_maritaca(text):
     """
-    Extrai entidades usando a API do Maritaca AI
+    Extrai entidades usando a API do Maritaca AI (com timeout otimizado)
     
     Args:
         text (str): Texto para análise
@@ -137,12 +205,15 @@ def extract_entities_with_maritaca(text):
     try:
         url = "https://chat.maritaca.ai/api/chat/inference"
         
+        # Limita ainda mais o texto para a API
+        text_limited = text[:1000]
+        
         prompt = f"""
-        Analise o seguinte texto e identifique APENAS os nomes de pessoas jurídicas, empresas, organizações ou entidades empresariais mencionadas.
+        Identifique APENAS nomes de empresas no texto abaixo.
         
-        Texto: {text[:2000]}  # Limita o texto para evitar tokens excessivos
+        Texto: {text_limited}
         
-        Responda APENAS com uma lista dos nomes identificados, separados por vírgula. Se não encontrar nenhum, responda "NENHUM".
+        Responda apenas com nomes separados por vírgula ou "NENHUM".
         """
         
         headers = {
@@ -158,11 +229,11 @@ def extract_entities_with_maritaca(text):
                 }
             ],
             "model": "sabia-2-medium",
-            "max_tokens": 500,
+            "max_tokens": 200,  # Reduzido
             "temperature": 0.1
         }
         
-        response = requests.post(url, json=data, headers=headers, timeout=30)
+        response = requests.post(url, json=data, headers=headers, timeout=API_TIMEOUT)
         
         if response.status_code == 200:
             result = response.json()
@@ -170,7 +241,7 @@ def extract_entities_with_maritaca(text):
             
             if content and content != "NENHUM":
                 entities = [entity.strip() for entity in content.split(',') if entity.strip()]
-                return entities
+                return entities[:10]  # Limita retorno
                 
         return []
         
@@ -180,7 +251,7 @@ def extract_entities_with_maritaca(text):
 
 def process_pdf_analysis(pdf_path, tributos_text):
     """
-    Processa a análise completa do PDF
+    Processa a análise completa do PDF (otimizada)
     
     Args:
         pdf_path (str): Caminho para o PDF
@@ -189,43 +260,55 @@ def process_pdf_analysis(pdf_path, tributos_text):
     Returns:
         dict: Resultados da análise
     """
-    # Extrai texto do PDF
-    text, success = extract_text_from_pdf(pdf_path)
-    if not success:
-        return {"error": "Não foi possível extrair texto do PDF. Verifique se o arquivo contém texto pesquisável."}
-    
-    # Processa lista de tributos
-    tributos = [t.strip() for t in tributos_text.split(',') if t.strip()]
-    if not tributos:
-        return {"error": "Nenhum tributo foi especificado para busca."}
-    
-    # Busca tributos no texto
-    trechos_encontrados = search_tributos_in_text(text, tributos)
-    
-    if not trechos_encontrados:
-        return {"error": "Nenhum dos tributos especificados foi encontrado no PDF."}
-    
-    # Extrai entidades para cada trecho
-    results = []
-    for trecho in trechos_encontrados:
-        # Extração com regex
-        entities_regex = extract_entities_with_regex(trecho['contexto'])
+    try:
+        # Extrai texto do PDF
+        text, success = extract_text_from_pdf(pdf_path)
+        if not success or text is None:
+            return {"error": "Não foi possível extrair texto do PDF ou tempo limite excedido. Tente um arquivo menor."}
         
-        # Extração com Maritaca AI
-        entities_ai = extract_entities_with_maritaca(trecho['contexto'])
+        # Processa lista de tributos
+        tributos = [t.strip() for t in tributos_text.split(',') if t.strip()]
+        if not tributos:
+            return {"error": "Nenhum tributo foi especificado para busca."}
         
-        # Combina resultados (remove duplicatas)
-        all_entities = list(set(entities_regex + entities_ai))
+        # Limita número de tributos
+        tributos = tributos[:5]
         
-        results.append({
-            'tributo': trecho['tributo'],
-            'linha_encontrada': trecho['linha_encontrada'],
-            'contexto': trecho['contexto'],
-            'linha_numero': trecho['linha_numero'],
-            'empresas_identificadas': all_entities
-        })
-    
-    return {"success": True, "results": results, "total_encontrados": len(results)}
+        # Busca tributos no texto
+        trechos_encontrados = search_tributos_in_text(text, tributos)
+        
+        if not trechos_encontrados:
+            return {"error": "Nenhum dos tributos especificados foi encontrado no PDF."}
+        
+        # Limita número de trechos processados
+        trechos_encontrados = trechos_encontrados[:20]
+        
+        # Extrai entidades para cada trecho
+        results = []
+        for trecho in trechos_encontrados:
+            # Extração com regex
+            entities_regex = extract_entities_with_regex(trecho['contexto'])
+            
+            # Extração com Maritaca AI (apenas se não há muitos resultados ainda)
+            entities_ai = []
+            if len(results) < 10:  # Limita chamadas à API
+                entities_ai = extract_entities_with_maritaca(trecho['contexto'])
+            
+            # Combina resultados (remove duplicatas)
+            all_entities = list(set(entities_regex + entities_ai))
+            
+            results.append({
+                'tributo': trecho['tributo'],
+                'linha_encontrada': trecho['linha_encontrada'],
+                'contexto': trecho['contexto'],
+                'linha_numero': trecho['linha_numero'],
+                'empresas_identificadas': all_entities
+            })
+        
+        return {"success": True, "results": results, "total_encontrados": len(results)}
+        
+    except Exception as e:
+        return {"error": f"Erro durante processamento: {str(e)}"}
 
 @app.route('/')
 def index():
@@ -261,7 +344,8 @@ def upload_file():
             result = process_pdf_analysis(filepath, tributos)
             
             # Remove arquivo temporário
-            os.remove(filepath)
+            if os.path.exists(filepath):
+                os.remove(filepath)
             
             return jsonify(result)
             
