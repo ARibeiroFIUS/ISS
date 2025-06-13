@@ -464,4 +464,4 @@ def too_large(e):
     return jsonify({"error": "Arquivo muito grande. Tamanho máximo: 50MB"}), 413
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8888) 
+    app.run(debug=True, host='0.0.0.0', port=5000) 
