@@ -1,14 +1,19 @@
 services:
   - type: web
-    name: analisador-tributos
+    name: iss-analyzer
     env: python
-    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    startCommand: gunicorn --config gunicorn.conf.py app:app
+    plan: free
     envVars:
       - key: FLASK_ENV
         value: production
       - key: SECRET_KEY
         generateValue: true
       - key: MARITACA_API_KEY
-        sync: false  # Deve ser definido manualmente no painel 
+        sync: false  # Será configurado manualmente no dashboard
+    healthCheckPath: /
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1 

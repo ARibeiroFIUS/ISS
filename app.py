@@ -24,9 +24,13 @@ ALLOWED_EXTENSIONS = {'pdf'}
 MARITACA_API_KEY = os.environ.get('MARITACA_API_KEY')
 
 # Configurações de timeout (ultra-agressivas para Render.com gratuito)
-PDF_PROCESSING_TIMEOUT = 15  # segundos (reduzido drasticamente)
-API_TIMEOUT = 5  # segundos (reduzido)
-MAX_PDF_PAGES = 20  # máximo de páginas para processar (reduzido)
+PDF_PROCESSING_TIMEOUT = 8  # segundos (reduzido drasticamente de 15 para 8)
+API_TIMEOUT = 3  # segundos (reduzido de 5 para 3)
+MAX_PDF_PAGES = 10  # máximo de páginas para processar (reduzido de 20 para 10)
+MAX_TEXT_SIZE = 100000  # 100KB de texto máximo (reduzido de 200KB)
+MAX_LINES_PROCESSED = 2000  # máximo de linhas processadas (reduzido de 5000)
+MAX_MATCHES_PER_TRIBUTO = 5  # máximo de matches por tributo (reduzido de 10)
+MAX_RESULTS_RETURNED = 10  # máximo de resultados retornados (reduzido de 20)
 
 # Cria pasta de uploads se não existir
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -103,7 +107,7 @@ def extract_text_from_pdf(pdf_path):
                 pages_processed += 1
                 
                 # Quebra se o texto já é muito grande (performance)
-                if len(text) > 200000:  # 200KB de texto (reduzido)
+                if len(text) > MAX_TEXT_SIZE:  # 100KB de texto (reduzido)
                     break
         
         if not text.strip():
@@ -139,8 +143,8 @@ def search_tributos_in_text(text, tributos):
     lines = text.split('\n')
     
     # Limita número de linhas para performance
-    if len(lines) > 5000:
-        lines = lines[:5000]
+    if len(lines) > MAX_LINES_PROCESSED:
+        lines = lines[:MAX_LINES_PROCESSED]
     
     for tributo in tributos:
         # Regex com word boundaries para evitar falsos positivos
@@ -150,7 +154,7 @@ def search_tributos_in_text(text, tributos):
         for i, line in enumerate(lines):
             if re.search(pattern, line, re.IGNORECASE):
                 # Limita número de matches por tributo
-                if matches_found >= 10:
+                if matches_found >= MAX_MATCHES_PER_TRIBUTO:
                     break
                 
                 # Captura contexto: 5 linhas antes e depois (reduzido para performance)
@@ -163,7 +167,7 @@ def search_tributos_in_text(text, tributos):
                 results.append({
                     'tributo': tributo.strip(),
                     'linha_encontrada': line.strip(),
-                    'contexto': context[:2000],  # Limita tamanho do contexto
+                    'contexto': context[:MAX_TEXT_SIZE],  # Limita tamanho do contexto
                     'linha_numero': i + 1
                 })
                 
@@ -192,7 +196,7 @@ def extract_entities_with_regex(text):
         return list(entities)
     
     # Limita tamanho do texto para performance
-    text = text[:5000]
+    text = text[:MAX_TEXT_SIZE]
     
     # Padrões para identificar empresas (otimizados)
     patterns = [
@@ -210,26 +214,24 @@ def extract_entities_with_regex(text):
                     entities.add(match.strip())
                     
                 # Limita número de entidades encontradas
-                if len(entities) >= 10:
+                if len(entities) >= MAX_RESULTS_RETURNED:
                     break
         except:
             continue
     
     return list(entities)
 
+@with_timeout(API_TIMEOUT)
 def extract_entities_with_maritaca(text):
     """
-    Extrai entidades usando a API Maritaca AI com saídas estruturadas
+    Extrai entidades usando a API Maritaca AI com timeout e otimizações agressivas
     
     Args:
         text (str): Texto para análise
         
     Returns:
-        list: Lista de organizações identificadas e simplificadas
+        list: Lista de nomes de empresas identificadas
     """
-    if not MARITACA_API_KEY:
-        return []
-    
     # Verifica se text é uma tupla (caso de timeout) e extrai apenas o texto
     if isinstance(text, tuple):
         text = text[0] if text[0] is not None else ""
@@ -238,31 +240,35 @@ def extract_entities_with_maritaca(text):
     if not isinstance(text, str):
         return []
     
+    # Se não há chave da API, retorna lista vazia
+    if not MARITACA_API_KEY or MARITACA_API_KEY == 'sua_chave_aqui':
+        return []
+    
     try:
-        import openai
+        from openai import OpenAI
         
-        client = openai.OpenAI(
+        client = OpenAI(
             api_key=MARITACA_API_KEY,
-            base_url="https://chat.maritaca.ai/api",
+            base_url="https://chat.maritaca.ai/api"
         )
         
-        # Limita o texto para a API
-        text_limited = text[:1000]
+        # Limita o texto para a API (ainda mais agressivo)
+        text_limited = text[:500]  # Reduzido drasticamente para 500 caracteres
         
-        # Schema para saída estruturada
+        # Schema para saída estruturada (simplificado)
         empresa_schema = {
-            "type": "object",
+            "name": "empresas_identificadas",
             "schema": {
+                "type": "object",
                 "properties": {
                     "empresas": {
                         "type": "array",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "nome_original": {"type": "string"},
                                 "nome_simplificado": {"type": "string"}
                             },
-                            "required": ["nome_original", "nome_simplificado"]
+                            "required": ["nome_simplificado"]
                         }
                     }
                 },
@@ -275,15 +281,15 @@ def extract_entities_with_maritaca(text):
             messages=[
                 {
                     "role": "system", 
-                    "content": "Você é um especialista em identificar e simplificar nomes de empresas em textos oficiais. Identifique empresas e forneça versões simplificadas dos nomes (removendo LTDA, ME, EIRELI, etc. e mantendo apenas o nome principal)."
+                    "content": "Identifique empresas e forneça apenas o nome principal (sem LTDA, ME, etc.)."
                 },
                 {
                     "role": "user", 
-                    "content": f"Identifique nomes de empresas no texto abaixo e forneça versões simplificadas:\n\n{text_limited}"
+                    "content": f"Empresas no texto:\n\n{text_limited}"
                 }
             ],
             response_format={"type": "json_schema", "json_schema": empresa_schema},
-            max_tokens=300,
+            max_tokens=100,  # Reduzido drasticamente
             temperature=0.1
         )
         
@@ -293,10 +299,10 @@ def extract_entities_with_maritaca(text):
             empresas = result.get('empresas', [])
             
             # Retorna os nomes simplificados
-            nomes_simplificados = [emp.get('nome_simplificado', emp.get('nome_original', '')) 
+            nomes_simplificados = [emp.get('nome_simplificado', '') 
                                  for emp in empresas if emp.get('nome_simplificado')]
             
-            return nomes_simplificados[:10]  # Limita retorno
+            return nomes_simplificados[:3]  # Limita ainda mais o retorno
                 
         return []
         
@@ -306,7 +312,7 @@ def extract_entities_with_maritaca(text):
 
 def process_pdf_analysis(pdf_path, tributos_text):
     """
-    Processa a análise completa do PDF (otimizada)
+    Processa a análise completa do PDF (ultra-otimizada para Render.com)
     
     Args:
         pdf_path (str): Caminho para o PDF
@@ -323,20 +329,20 @@ def process_pdf_analysis(pdf_path, tributos_text):
         if isinstance(result, tuple):
             text, success = result
             if not success or text is None:
-                return {"error": "Não foi possível extrair texto do PDF ou tempo limite excedido. Tente um arquivo menor."}
+                return {"error": "Tempo limite excedido. Tente um PDF menor ou com menos páginas."}
         else:
             # Resultado direto (sem timeout)
             text = result
             if text is None:
                 return {"error": "Não foi possível extrair texto do PDF."}
         
-        # Processa lista de tributos
+        # Processa lista de tributos (limita a 3 tributos)
         tributos = [t.strip() for t in tributos_text.split(',') if t.strip()]
         if not tributos:
             return {"error": "Nenhum tributo foi especificado para busca."}
         
-        # Limita número de tributos
-        tributos = tributos[:5]
+        # Limita número de tributos drasticamente
+        tributos = tributos[:3]
         
         # Busca tributos no texto
         trechos_encontrados = search_tributos_in_text(text, tributos)
@@ -344,27 +350,42 @@ def process_pdf_analysis(pdf_path, tributos_text):
         if not trechos_encontrados:
             return {"error": "Nenhum dos tributos especificados foi encontrado no PDF."}
         
-        # Limita número de trechos processados
-        trechos_encontrados = trechos_encontrados[:20]
+        # Limita número de trechos processados drasticamente
+        trechos_encontrados = trechos_encontrados[:5]
         
-        # Extrai entidades para cada trecho
+        # Extrai entidades para cada trecho (processamento mínimo)
         results = []
-        for trecho in trechos_encontrados:
-            # Extração com regex
+        for i, trecho in enumerate(trechos_encontrados):
+            # Para economizar tempo, só processa entidades nos primeiros 3 trechos
+            if i >= 3:
+                results.append({
+                    'tributo': trecho['tributo'],
+                    'linha_encontrada': trecho['linha_encontrada'],
+                    'contexto': trecho['contexto'][:500],  # Contexto muito reduzido
+                    'linha_numero': trecho['linha_numero'],
+                    'empresas_identificadas': []  # Sem processamento de entidades para economizar tempo
+                })
+                continue
+            
+            # Extração com regex (apenas para os primeiros trechos)
             entities_regex = extract_entities_with_regex(trecho['contexto'])
             
-            # Extração com Maritaca AI (apenas se não há muitos resultados ainda)
+            # Extração com Maritaca AI (apenas para o primeiro trecho)
             entities_ai = []
-            if len(results) < 10:  # Limita chamadas à API
-                entities_ai = extract_entities_with_maritaca(trecho['contexto'])
+            if i == 0 and MARITACA_API_KEY and MARITACA_API_KEY != 'sua_chave_aqui':
+                ai_result = extract_entities_with_maritaca(trecho['contexto'])
+                if isinstance(ai_result, tuple):
+                    entities_ai = ai_result[0] if ai_result[0] is not None else []
+                else:
+                    entities_ai = ai_result if ai_result is not None else []
             
             # Combina resultados (remove duplicatas)
-            all_entities = list(set(entities_regex + entities_ai))
+            all_entities = list(set(entities_regex + entities_ai))[:3]  # Máximo 3 entidades
             
             results.append({
                 'tributo': trecho['tributo'],
                 'linha_encontrada': trecho['linha_encontrada'],
-                'contexto': trecho['contexto'],
+                'contexto': trecho['contexto'][:500],  # Contexto reduzido
                 'linha_numero': trecho['linha_numero'],
                 'empresas_identificadas': all_entities
             })
@@ -381,7 +402,7 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Processa upload do arquivo PDF"""
+    """Processa upload do arquivo PDF (otimizado para Render.com)"""
     if 'file' not in request.files:
         return jsonify({"error": "Nenhum arquivo foi enviado"}), 400
     
@@ -394,6 +415,15 @@ def upload_file():
     if not tributos.strip():
         return jsonify({"error": "Nenhum tributo foi especificado"}), 400
     
+    # Verifica tamanho do arquivo (mais restritivo para Render.com)
+    file.seek(0, 2)  # Move para o final do arquivo
+    file_size = file.tell()
+    file.seek(0)  # Volta para o início
+    
+    # Limite mais restritivo: 10MB para Render.com gratuito
+    if file_size > 10 * 1024 * 1024:
+        return jsonify({"error": "Arquivo muito grande. Máximo 10MB para melhor performance."}), 400
+    
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         # Adiciona timestamp para evitar conflitos
@@ -404,8 +434,15 @@ def upload_file():
         try:
             file.save(filepath)
             
-            # Processa o arquivo
+            # Processa o arquivo com timeout global
+            import time
+            start_time = time.time()
+            
             result = process_pdf_analysis(filepath, tributos)
+            
+            # Verifica se excedeu tempo total (failsafe)
+            if time.time() - start_time > 25:  # 25 segundos máximo total
+                result = {"error": "Processamento muito longo. Tente um arquivo menor."}
             
             # Remove arquivo temporário
             if os.path.exists(filepath):
@@ -464,4 +501,8 @@ def too_large(e):
     return jsonify({"error": "Arquivo muito grande. Tamanho máximo: 50MB"}), 413
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    # Configuração para produção no Render.com
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    
+    app.run(debug=debug_mode, host='0.0.0.0', port=port) 
