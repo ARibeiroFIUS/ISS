@@ -127,6 +127,15 @@ def search_tributos_in_text(text, tributos):
         list: Lista de dicionários com trechos encontrados
     """
     results = []
+    
+    # Verifica se text é uma tupla (caso de timeout) e extrai apenas o texto
+    if isinstance(text, tuple):
+        text = text[0] if text[0] is not None else ""
+    
+    # Garante que text é uma string
+    if not isinstance(text, str):
+        return results
+    
     lines = text.split('\n')
     
     # Limita número de linhas para performance
@@ -174,6 +183,14 @@ def extract_entities_with_regex(text):
     """
     entities = set()
     
+    # Verifica se text é uma tupla (caso de timeout) e extrai apenas o texto
+    if isinstance(text, tuple):
+        text = text[0] if text[0] is not None else ""
+    
+    # Garante que text é uma string
+    if not isinstance(text, str):
+        return list(entities)
+    
     # Limita tamanho do texto para performance
     text = text[:5000]
     
@@ -211,6 +228,14 @@ def extract_entities_with_maritaca(text):
         list: Lista de organizações identificadas e simplificadas
     """
     if not MARITACA_API_KEY:
+        return []
+    
+    # Verifica se text é uma tupla (caso de timeout) e extrai apenas o texto
+    if isinstance(text, tuple):
+        text = text[0] if text[0] is not None else ""
+    
+    # Garante que text é uma string
+    if not isinstance(text, str):
         return []
     
     try:
@@ -439,4 +464,4 @@ def too_large(e):
     return jsonify({"error": "Arquivo muito grande. Tamanho máximo: 50MB"}), 413
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8080) 
+    app.run(debug=True, host='0.0.0.0', port=8888) 
