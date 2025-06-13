@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🖥️ Analisador de Tributos - Versão Local Desktop</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --light-bg: #ecf0f1;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .main-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            margin: 20px auto;
+            max-width: 1200px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="25" cy="25" r="1" fill="white" opacity="0.1"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.1"/><circle cx="50" cy="10" r="0.5" fill="white" opacity="0.1"/><circle cx="10" cy="50" r="0.5" fill="white" opacity="0.1"/><circle cx="90" cy="30" r="0.5" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .version-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            z-index: 1;
+        }
+
+        .content-section {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 3px dashed var(--secondary-color);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            background: var(--light-bg);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: var(--success-color);
+            background: #d5f4e6;
+            transform: translateY(-2px);
+        }
+
+        .upload-area.dragover {
+            border-color: var(--success-color);
+            background: #d5f4e6;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: var(--secondary-color);
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-area:hover .upload-icon {
+            color: var(--success-color);
+            transform: scale(1.1);
+        }
+
+        .form-control, .form-select {
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            padding: 12px 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+        }
+
+        .btn-custom {
+            border-radius: 10px;
+            padding: 12px 30px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--secondary-color) 0%, #2980b9 100%);
+            color: white;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn-success-custom {
+            background: linear-gradient(135deg, var(--success-color) 0%, #229954 100%);
+            color: white;
+        }
+
+        .btn-warning-custom {
+            background: linear-gradient(135deg, var(--warning-color) 0%, #e67e22 100%);
+            color: white;
+        }
+
+        .progress-container {
+            margin: 30px 0;
+            display: none;
+        }
+
+        .progress {
+            height: 8px;
+            border-radius: 10px;
+            background: #e9ecef;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--secondary-color), var(--success-color));
+            transition: width 0.3s ease;
+        }
+
+        .results-container {
+            margin-top: 40px;
+            display: none;
+        }
+
+        .results-table {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .table thead th {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 15px;
+            font-weight: 600;
+        }
+
+        .table tbody td {
+            padding: 15px;
+            border-color: #e9ecef;
+            vertical-align: middle;
+        }
+
+        .table tbody tr:hover {
+            background: var(--light-bg);
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: 600;
+            display: none;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .tributo-badge {
+            background: var(--secondary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .empresa-tag {
+            background: var(--success-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin: 2px;
+            display: inline-block;
+        }
+
+        .context-preview {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+            color: var(--secondary-color);
+        }
+
+        .context-preview:hover {
+            text-decoration: underline;
+        }
+
+        .quick-tributos {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .quick-tributo-btn {
+            background: rgba(52, 152, 219, 0.1);
+            border: 1px solid var(--secondary-color);
+            color: var(--secondary-color);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .quick-tributo-btn:hover {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        .file-info {
+            background: rgba(39, 174, 96, 0.1);
+            border: 1px solid var(--success-color);
+            color: var(--success-color);
+            padding: 10px 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .local-features {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+
+        .local-features h5 {
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .local-features ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .local-features li {
+            padding: 5px 0;
+            position: relative;
+            padding-left: 25px;
+        }
+
+        .local-features li::before {
+            content: '✅';
+            position: absolute;
+            left: 0;
+            top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .content-section {
+                padding: 20px;
+            }
+            
+            .upload-area {
+                padding: 20px;
+            }
+            
+            .quick-tributos {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="main-container">
+            <!-- Header -->
+            <div class="header">
+                <div class="version-badge">
+                    <i class="fas fa-desktop"></i> Versão Local Desktop
+                </div>
+                <h1><i class="fas fa-chart-line"></i> Analisador de Tributos</h1>
+                <p class="subtitle">Análise de Diários Oficiais Municipais - 100% Local, Sem Limitações</p>
+            </div>
+
+            <!-- Content -->
+            <div class="content-section">
+                <!-- Vantagens da Versão Local -->
+                <div class="local-features">
+                    <h5><i class="fas fa-rocket"></i> Vantagens da Versão Local Desktop</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul>
+                                <li>Sem timeouts - Processa arquivos grandes</li>
+                                <li>Sem limitações de tamanho (até 500MB)</li>
+                                <li>100% privado - Seus PDFs não saem da máquina</li>
+                                <li>Processamento completo de todas as páginas</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul>
+                                <li>Contexto completo (15 linhas antes/depois)</li>
+                                <li>Identificação avançada de empresas</li>
+                                <li>API Maritaca opcional para melhor precisão</li>
+                                <li>Exportação CSV otimizada para Excel</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upload Section -->
+                <div class="row">
+                    <div class="col-12">
+                        <h3><i class="fas fa-file-pdf"></i> Selecionar Arquivo PDF</h3>
+                        <div class="upload-area" id="uploadArea">
+                            <div class="upload-icon">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <h4>Arraste seu PDF aqui ou clique para selecionar</h4>
+                            <p class="text-muted">Suporte a arquivos de até 500MB • Todas as páginas serão processadas</p>
+                            <input type="file" id="fileInput" accept=".pdf" style="display: none;">
+                        </div>
+                        <div class="file-info" id="fileInfo"></div>
+                    </div>
+                </div>
+
+                <!-- Tributos Section -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <h3><i class="fas fa-search"></i> Tributos para Buscar</h3>
+                        <div class="form-group">
+                            <label for="tributos" class="form-label">Digite os tributos separados por vírgula:</label>
+                            <input type="text" class="form-control" id="tributos" 
+                                   value="ISS, ISSQN, IPTU, ITBI, ICMS" 
+                                   placeholder="Ex: ISS, ISSQN, IPTU, ITBI">
+                            <div class="quick-tributos">
+                                <span class="quick-tributo-btn" onclick="setTributos('ISS, ISSQN')">
+                                    <i class="fas fa-building"></i> ISS/ISSQN
+                                </span>
+                                <span class="quick-tributo-btn" onclick="setTributos('IPTU, ITBI')">
+                                    <i class="fas fa-home"></i> IPTU/ITBI
+                                </span>
+                                <span class="quick-tributo-btn" onclick="setTributos('ICMS, COFINS, PIS')">
+                                    <i class="fas fa-industry"></i> ICMS/COFINS/PIS
+                                </span>
+                                <span class="quick-tributo-btn" onclick="setTributos('ISS, ISSQN, IPTU, ITBI, ICMS, COFINS, PIS, CSLL')">
+                                    <i class="fas fa-list"></i> Todos
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Configuration -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5><i class="fas fa-robot"></i> Configuração API Maritaca (Opcional)</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <input type="password" class="form-control" id="apiKey" 
+                                               placeholder="Cole sua chave da API Maritaca aqui (opcional)">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button class="btn btn-warning-custom btn-custom w-100" onclick="saveApiKey()">
+                                            <i class="fas fa-save"></i> Salvar Chave
+                                        </button>
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> 
+                                    Sem a chave da API, o sistema usa apenas regex (já muito eficiente). 
+                                    Com a chave, melhora a identificação de empresas.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analyze Button -->
+                <div class="row mt-4">
+                    <div class="col-12 text-center">
+                        <button class="btn btn-primary-custom btn-custom btn-lg" id="analyzeBtn" onclick="analyzeFile()">
+                            <i class="fas fa-play"></i> Analisar PDF
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress -->
+                <div class="progress-container" id="progressContainer">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span id="progressText">Processando...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Status Messages -->
+                <div class="status-message" id="statusMessage"></div>
+
+                <!-- Results -->
+                <div class="results-container" id="resultsContainer">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h3><i class="fas fa-list-alt"></i> Resultados da Análise</h3>
+                        <div>
+                            <button class="btn btn-success-custom btn-custom" onclick="exportCSV()">
+                                <i class="fas fa-download"></i> Exportar CSV
+                            </button>
+                            <button class="btn btn-warning-custom btn-custom" onclick="clearResults()">
+                                <i class="fas fa-trash"></i> Limpar
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive results-table">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Tributo</th>
+                                    <th>Linha Encontrada</th>
+                                    <th>Nº Linha</th>
+                                    <th>Empresas</th>
+                                    <th>Contexto</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Modal -->
+    <div class="modal fade" id="contextModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Contexto Completo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="contextContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentResults = [];
+        let selectedFile = null;
+
+        // Upload area functionality
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (file.type !== 'application/pdf') {
+                showStatus('Apenas arquivos PDF são aceitos.', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+            fileInfo.innerHTML = `
+                <i class="fas fa-file-pdf"></i> 
+                <strong>${file.name}</strong> (${sizeMB} MB)
+            `;
+            fileInfo.style.display = 'block';
+        }
+
+        function setTributos(tributos) {
+            document.getElementById('tributos').value = tributos;
+        }
+
+        function saveApiKey() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                showStatus('Digite uma chave da API para salvar.', 'error');
+                return;
+            }
+
+            // Simula salvamento (na versão real, salvaria no .env)
+            showStatus('Chave da API salva com sucesso! (Simulado na versão local)', 'success');
+        }
+
+        function analyzeFile() {
+            if (!selectedFile) {
+                showStatus('Selecione um arquivo PDF primeiro.', 'error');
+                return;
+            }
+
+            const tributos = document.getElementById('tributos').value.trim();
+            if (!tributos) {
+                showStatus('Digite os tributos para buscar.', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('tributos', tributos);
+
+            // UI updates
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('resultsContainer').style.display = 'none';
+            hideStatus();
+
+            // Simulate progress
+            simulateProgress();
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('analyzeBtn').disabled = false;
+                document.getElementById('progressContainer').style.display = 'none';
+
+                if (data.error) {
+                    showStatus(data.error, 'error');
+                } else {
+                    currentResults = data.results;
+                    displayResults(data.results);
+                    showStatus(`✅ Análise concluída! ${data.total_encontrados} resultados encontrados.`, 'success');
+                }
+            })
+            .catch(error => {
+                document.getElementById('analyzeBtn').disabled = false;
+                document.getElementById('progressContainer').style.display = 'none';
+                showStatus('Erro durante análise: ' + error.message, 'error');
+            });
+        }
+
+        function simulateProgress() {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const progressPercent = document.getElementById('progressPercent');
+            
+            let progress = 0;
+            const messages = [
+                'Extraindo texto do PDF...',
+                'Buscando tributos...',
+                'Identificando empresas...',
+                'Processando resultados...',
+                'Finalizando análise...'
+            ];
+            
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 95) progress = 95;
+                
+                progressBar.style.width = progress + '%';
+                progressPercent.textContent = Math.round(progress) + '%';
+                
+                const messageIndex = Math.floor((progress / 100) * messages.length);
+                if (messageIndex < messages.length) {
+                    progressText.textContent = messages[messageIndex];
+                }
+            }, 500);
+
+            // Clear interval when request completes
+            setTimeout(() => clearInterval(interval), 30000);
+        }
+
+        function displayResults(results) {
+            const tbody = document.getElementById('resultsTableBody');
+            tbody.innerHTML = '';
+
+            results.forEach((result, index) => {
+                const row = document.createElement('tr');
+                
+                const empresas = result.empresas_identificadas || [];
+                const empresasHtml = empresas.map(emp => 
+                    `<span class="empresa-tag">${emp}</span>`
+                ).join(' ');
+
+                const contextoPreview = result.contexto.substring(0, 100) + '...';
+
+                row.innerHTML = `
+                    <td><span class="tributo-badge">${result.tributo}</span></td>
+                    <td>${result.linha_encontrada.substring(0, 80)}${result.linha_encontrada.length > 80 ? '...' : ''}</td>
+                    <td>${result.linha_numero}</td>
+                    <td>${empresasHtml || '<em class="text-muted">Nenhuma identificada</em>'}</td>
+                    <td>
+                        <span class="context-preview" onclick="showContext(${index})">
+                            ${contextoPreview}
+                        </span>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+
+            document.getElementById('resultsContainer').style.display = 'block';
+        }
+
+        function showContext(index) {
+            const result = currentResults[index];
+            const modal = new bootstrap.Modal(document.getElementById('contextModal'));
+            
+            document.getElementById('contextContent').innerHTML = `
+                <div class="mb-3">
+                    <strong>Tributo:</strong> <span class="tributo-badge">${result.tributo}</span><br>
+                    <strong>Linha:</strong> ${result.linha_numero}<br>
+                    <strong>Empresas:</strong> ${result.empresas_identificadas.join(', ') || 'Nenhuma identificada'}
+                </div>
+                <div class="border p-3 rounded" style="background: #f8f9fa; white-space: pre-wrap; font-family: monospace;">
+${result.contexto}
+                </div>
+            `;
+            
+            modal.show();
+        }
+
+        function exportCSV() {
+            if (currentResults.length === 0) {
+                showStatus('Nenhum resultado para exportar.', 'error');
+                return;
+            }
+
+            fetch('/export_csv', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ results: currentResults })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `analise_tributos_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                showStatus('Arquivo CSV exportado com sucesso!', 'success');
+            })
+            .catch(error => {
+                showStatus('Erro ao exportar CSV: ' + error.message, 'error');
+            });
+        }
+
+        function clearResults() {
+            currentResults = [];
+            document.getElementById('resultsContainer').style.display = 'none';
+            hideStatus();
+            showStatus('Resultados limpos.', 'info');
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i> ${message}`;
+            statusDiv.style.display = 'block';
+            
+            if (type === 'success' || type === 'info') {
+                setTimeout(hideStatus, 5000);
+            }
+        }
+
+        function hideStatus() {
+            document.getElementById('statusMessage').style.display = 'none';
+        }
+    </script>
+</body>
+</html> 
