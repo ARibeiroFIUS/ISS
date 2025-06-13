@@ -292,9 +292,18 @@ def process_pdf_analysis(pdf_path, tributos_text):
     """
     try:
         # Extrai texto do PDF
-        text, success = extract_text_from_pdf(pdf_path)
-        if not success or text is None:
-            return {"error": "Não foi possível extrair texto do PDF ou tempo limite excedido. Tente um arquivo menor."}
+        result = extract_text_from_pdf(pdf_path)
+        
+        # Verifica se o resultado é uma tupla (com timeout) ou apenas o texto
+        if isinstance(result, tuple):
+            text, success = result
+            if not success or text is None:
+                return {"error": "Não foi possível extrair texto do PDF ou tempo limite excedido. Tente um arquivo menor."}
+        else:
+            # Resultado direto (sem timeout)
+            text = result
+            if text is None:
+                return {"error": "Não foi possível extrair texto do PDF."}
         
         # Processa lista de tributos
         tributos = [t.strip() for t in tributos_text.split(',') if t.strip()]
@@ -430,4 +439,4 @@ def too_large(e):
     return jsonify({"error": "Arquivo muito grande. Tamanho máximo: 50MB"}), 413
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    app.run(debug=True, host='0.0.0.0', port=8080) 
