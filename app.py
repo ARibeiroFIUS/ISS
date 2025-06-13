@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, jsonify, send_file, flash, re
 import pdfplumber
 import requests
 from dotenv import load_dotenv
-import signal
+import threading
 from functools import wraps
 
 # Carrega variáveis de ambiente
@@ -34,27 +34,38 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 class TimeoutError(Exception):
     pass
 
-def timeout_handler(signum, frame):
-    raise TimeoutError("Operação excedeu o tempo limite")
-
 def with_timeout(seconds):
-    """Decorator para adicionar timeout a funções"""
+    """Decorator para adicionar timeout a funções usando threading"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Configura o signal para timeout
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(seconds)
+            result = [None]
+            exception = [None]
+            success = [False]
             
-            try:
-                result = func(*args, **kwargs)
-            except TimeoutError:
-                return None
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+            def target():
+                try:
+                    result[0] = func(*args, **kwargs)
+                    success[0] = True
+                except Exception as e:
+                    exception[0] = e
             
-            return result
+            thread = threading.Thread(target=target)
+            thread.daemon = True
+            thread.start()
+            thread.join(seconds)
+            
+            if thread.is_alive():
+                # Thread ainda está rodando, timeout ocorreu
+                return None, False
+            
+            if exception[0]:
+                # Houve uma exceção na função
+                print(f"Erro na função {func.__name__}: {exception[0]}")
+                return None, False
+                
+            return result[0], success[0]
+        
         return wrapper
     return decorator
 
