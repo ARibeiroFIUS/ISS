@@ -191,57 +191,76 @@ def extract_entities_with_regex(text):
 
 def extract_entities_with_maritaca(text):
     """
-    Extrai entidades usando a API do Maritaca AI (com timeout otimizado)
+    Extrai entidades usando a API Maritaca AI com saídas estruturadas
     
     Args:
         text (str): Texto para análise
         
     Returns:
-        list: Lista de organizações identificadas
+        list: Lista de organizações identificadas e simplificadas
     """
     if not MARITACA_API_KEY:
         return []
     
     try:
-        url = "https://chat.maritaca.ai/api/chat/inference"
+        import openai
         
-        # Limita ainda mais o texto para a API
+        client = openai.OpenAI(
+            api_key=MARITACA_API_KEY,
+            base_url="https://chat.maritaca.ai/api",
+        )
+        
+        # Limita o texto para a API
         text_limited = text[:1000]
         
-        prompt = f"""
-        Identifique APENAS nomes de empresas no texto abaixo.
-        
-        Texto: {text_limited}
-        
-        Responda apenas com nomes separados por vírgula ou "NENHUM".
-        """
-        
-        headers = {
-            "Authorization": f"Key {MARITACA_API_KEY}",
-            "Content-Type": "application/json"
+        # Schema para saída estruturada
+        empresa_schema = {
+            "type": "object",
+            "schema": {
+                "properties": {
+                    "empresas": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "nome_original": {"type": "string"},
+                                "nome_simplificado": {"type": "string"}
+                            },
+                            "required": ["nome_original", "nome_simplificado"]
+                        }
+                    }
+                },
+                "required": ["empresas"]
+            }
         }
         
-        data = {
-            "messages": [
+        response = client.beta.chat.completions.parse(
+            model="sabiazinho-3",
+            messages=[
                 {
-                    "role": "user",
-                    "content": prompt
+                    "role": "system", 
+                    "content": "Você é um especialista em identificar e simplificar nomes de empresas em textos oficiais. Identifique empresas e forneça versões simplificadas dos nomes (removendo LTDA, ME, EIRELI, etc. e mantendo apenas o nome principal)."
+                },
+                {
+                    "role": "user", 
+                    "content": f"Identifique nomes de empresas no texto abaixo e forneça versões simplificadas:\n\n{text_limited}"
                 }
             ],
-            "model": "sabia-2-medium",
-            "max_tokens": 200,  # Reduzido
-            "temperature": 0.1
-        }
+            response_format={"type": "json_schema", "json_schema": empresa_schema},
+            max_tokens=300,
+            temperature=0.1
+        )
         
-        response = requests.post(url, json=data, headers=headers, timeout=API_TIMEOUT)
-        
-        if response.status_code == 200:
-            result = response.json()
-            content = result.get('answer', '').strip()
+        if response.choices[0].message.content:
+            import json
+            result = json.loads(response.choices[0].message.content)
+            empresas = result.get('empresas', [])
             
-            if content and content != "NENHUM":
-                entities = [entity.strip() for entity in content.split(',') if entity.strip()]
-                return entities[:10]  # Limita retorno
+            # Retorna os nomes simplificados
+            nomes_simplificados = [emp.get('nome_simplificado', emp.get('nome_original', '')) 
+                                 for emp in empresas if emp.get('nome_simplificado')]
+            
+            return nomes_simplificados[:10]  # Limita retorno
                 
         return []
         
